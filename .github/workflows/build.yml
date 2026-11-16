@@ -4,9 +4,9 @@ name: Build VYRNTH Dungeons
 on:
   workflow_dispatch:
   push:
-    paths:
-      - '**.zip'
-      - '.github/workflows/build.yml'
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -21,34 +21,48 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-          cache: maven
 
       - name: Extract plugin source ZIP
+        shell: bash
         run: |
-          ZIP=$(find . -maxdepth 2 -name '*.zip' | head -n 1)
-          if [ -z "$ZIP" ]; then
-            echo "No source ZIP found!"
+          ZIP="$(find . -type f -name '*.zip' -not -path './.git/*' -print -quit)"
+
+          if [[ -z "$ZIP" ]]; then
+            echo "::error::No source ZIP found in repository!"
             exit 1
           fi
-          mkdir extracted
+
+          mkdir -p extracted
           unzip -q "$ZIP" -d extracted
 
       - name: Locate Maven project
+        shell: bash
         run: |
-          POM=$(find extracted -name pom.xml | head -n 1)
-          if [ -z "$POM" ]; then
-            echo "pom.xml not found!"
+          POM="$(find extracted -type f -name pom.xml -print -quit)"
+
+          if [[ -z "$POM" ]]; then
+            echo "::error::pom.xml not found inside source ZIP!"
             exit 1
           fi
+
           echo "PROJECT_DIR=$(dirname "$POM")" >> "$GITHUB_ENV"
 
       - name: Build plugin
         run: mvn -B -f "$PROJECT_DIR/pom.xml" clean package
 
       - name: Prepare JAR
+        shell: bash
         run: |
+          JAR="$PROJECT_DIR/target/VyrnthDungeons.jar"
+
+          if [[ ! -f "$JAR" ]]; then
+            echo "::error::VyrnthDungeons.jar was not generated!"
+            find "$PROJECT_DIR/target" -type f || true
+            exit 1
+          fi
+
           mkdir -p output
-          cp "$PROJECT_DIR/target/VyrnthDungeons.jar" output/
+          cp "$JAR" output/
 
       - name: Upload plugin JAR
         uses: actions/upload-artifact@v4
